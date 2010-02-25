@@ -6,10 +6,6 @@
 #################################################################################
 
 
-
-
-
-
 #################################################################################
 #
 # predict.TR_TreeRank(object, newdata, type) : predict node or score for newdata
@@ -36,16 +32,19 @@ predict.TR_TreeRank<- function(object, newdata = NULL, type = "score",...)
   
   while(length(nodestack)>0){
 	id <- nodestack[[1]];
+
 	nodestack <- nodestack[-1];
         if (object$isleaf[id]) {
 		retid[indextab[[id]]]<- id;
  		next;
 	}
+        if (length(indextab[[id]]) >0){
 	tmp <- predict(getClassifier(object,id),newdata[indextab[[id]],]);
         kids <- object$kidslist[[id]];
         indextab[kids[1]] <- list(indextab[[id]][tmp<0]);
         indextab[kids[2]] <- list(indextab[[id]][tmp>0]);          
         nodestack <- c(nodestack,kids[1],kids[2]);
+}
   }
   if (type == "node")
       return(retid)
@@ -53,6 +52,23 @@ predict.TR_TreeRank<- function(object, newdata = NULL, type = "score",...)
 }
 
 
+
+
+predict.TR_forest<- function(object, newdata = NULL,...){
+  if (!inherits(object,"TR_forest"))
+    stop("Object not of class TR_forest");
+  
+  if (is.null(newdata))
+    newdata <- object$forest[[1]]$data;
+  res <- array(0,dim=nrow(newdata))
+  for (i in 1:object$ntree	)
+  {
+    tmp <- predict(object$forest[[i]],newdata);
+    res <- res + tmp;
+  }
+  res <- res / object$ntree;
+  res
+}
 
 
 #################################################################################
@@ -89,12 +105,28 @@ getClassifier <- function(tree,id){
 #################################################################################
 
 
-TreeRankRec <- function(formula, data, response, bestresponse, weights = NULL, growing = growing_ctrl(), LeafRank = LRCart, cbFct= NULL){
+TreeRankRec <- function(formula, data,  bestresponse, growing = growing_ctrl(), LeafRank = LRCart,varsplit=1){
    
-   print(paste("Computing TreeMaster - :"));
-   if (is.null(weights)) weights <- rep.int(1,length(response));
-   pcInit <- sum(weights[response == bestresponse]);
-   ncInit <- sum(weights[response != bestresponse]);
+  if (missing(data))
+        data <- environment(formula)
+  call <- mf  <- match.call(expand.dots = FALSE)
+  m <- match(c("formula", "data", "weights"),names(mf), 0)
+  mf <- mf[c(1, m)]
+  mf$drop.unused.levels <- FALSE
+  mf[[1]] <- as.name("model.frame")
+  mf <- eval(mf, parent.frame())
+  Terms <- attr(mf,"terms");
+  response <- model.response(mf);
+  w <- model.extract(mf,"weights");
+  if (length(w)==0L) w <- rep.int(1,length(response));
+  rn <- names(mf)[1] 
+ x <- mf[,colnames(mf) != "(weights)"]
+
+  inputs <- which(!(colnames(x) %in% rn ))
+  
+   print(paste("Computing Master Tree - :"));
+   pcInit <- sum(w[response == bestresponse]);
+   ncInit <- sum(w[response != bestresponse]);
    #initialise root node
    id <- 1;
    nextnode <- 1;
@@ -119,8 +151,8 @@ TreeRankRec <- function(formula, data, response, bestresponse, weights = NULL, g
      id <- nodestack[[1]];
      isleaf[id] <- TRUE;
      nodestack <- nodestack[-1];
-     tmpdata <- data[wtmp[[id]],];
-     tmpweights <- weights[wtmp[[id]]];
+     tmpdata <- x[wtmp[[id]],];
+     tmpweights <- w[wtmp[[id]]];
      tmpresponse <- response[wtmp[[id]]];
      pcount[id] <- sum(tmpweights[tmpresponse == bestresponse]);
      ncount[id] <- sum(tmpweights[tmpresponse != bestresponse]);
@@ -128,13 +160,49 @@ TreeRankRec <- function(formula, data, response, bestresponse, weights = NULL, g
      nodeorder[id] <- curscore;
      curscore <- curscore+1;
      if ((depth[id] >=growing$maxdepth)|| ((pcount[id]+ncount[id])<growing$minsplit)|| (!checkImpure(tmpweights,tmpresponse))){
-       if (!(is.null(cbFct))){cbFct(id,depth[id],pcount[id],ncount[id],-1,-1);}
+
  	kidslist[id] <- NA;
  	LRList[id] <- NA;
         next;
     }
+	if (varsplit <1)
+	xid <- c(1,sample(2:ncol(tmpdata),ceiling(varsplit*(ncol(tmpdata)-1))))
+	else xid <- 1:ncol(tmpdata);
+	tmpdata <- tmpdata[,xid];
     #Build the LeafRank  classifier for the current node
-    lrTree <- LeafRank(formula = formula,data = tmpdata, bestresponse = bestresponse,tmpweights);
+    if (is.function(LeafRank)){
+	lrTree <- LeafRank(formula = formula,data = tmpdata, bestresponse = bestresponse);
+	}        
+	else{
+	LRlist <- LeafRank$LRlist;
+	splitD <- LeafRank$split;
+	idLearn <- sample(nrow(tmpdata),ceiling(nrow(tmpdata)*splitD));
+	listTree <- list();
+	listAUC <- list();
+	maxauc <- 0;
+	maxtree<- NULL;
+	print("begin")
+	for (alg in LRlist){
+#browser()
+		tmptree <- alg(formula=formula,data=tmpdata[idLearn,],bestresponse=bestresponse);
+		lrResponse <- predict(tmptree,tmpdata[-idLearn,]); 
+	        left <- lrResponse <=0;
+	        right <- lrResponse >0;
+		npc <- sum(tmpweights[(tmpresponse[-idLearn] == bestresponse) & left]);
+		nnc <- sum(tmpweights[(tmpresponse[-idLearn] != bestresponse) & left]);
+		auctmp = -((pcount[id]/pcInit)*(nnc/ncInit)-(ncount[id]/ncInit)*(npc/pcInit))/2
+		if (auctmp>maxauc)
+			{
+			maxtree <- tmptree;
+			maxauc <- auctmp;
+			maxalg <- alg;
+			}
+		
+	}
+	lrTree <-  alg(formula=formula,data=tmpdata,bestresponse=bestresponse);
+	print(class(lrTree))
+     }
+
      if (is.null(lrTree))
        {
          kidslist[id]<-NA;
@@ -151,7 +219,6 @@ TreeRankRec <- function(formula, data, response, bestresponse, weights = NULL, g
     nnc <- sum(tmpweights[(tmpresponse != bestresponse) & left]);
     #If a kid is empty, the current node is a leaf
     if (((npc+nnc) == 0) || ((pcount[id]+ncount[id]-(npc+nnc)) == 0)){
-      if (!(is.null(cbFct))){cbFct(id,depth[id],pcount[id],ncount[id],-1,-1);}
        kidslist[id]<-NA;
        LRList[id] <- NA;
        next;
@@ -176,7 +243,7 @@ TreeRankRec <- function(formula, data, response, bestresponse, weights = NULL, g
     nodestack <- c(nextnode+1,nextnode+2,nodestack);
     nextnode <- nextnode+2;
    
-   if (!is.null(cbFct)) cbFct(id,depth,pcount,ncount,npc,nnc);
+
 
    }
    cat("\n");
@@ -213,6 +280,43 @@ TreeRankRec <- function(formula, data, response, bestresponse, weights = NULL, g
 }
 
 
+
+#################################################################################
+#
+# TreeRankForest(formula,data,bestresponse,ntree,replace,sampsize,varsplit,...)
+# TreeRank Forest version
+#
+#    formula,data 
+#    bestresponse : value of the best label 
+#    ntree : number of trees to be computed
+#    sampsize : percent of the data to use for each tree
+#    replace : drawing examples from data with replacement or not
+#    varsplit : percent of variables to be used for each internal node of trees.
+#
+#################################################################################
+
+TreeRankForest <- function(formula,data,bestresponse,ntree=5,replace=TRUE,sampsize=0.5,varsplit=1,...){
+  forest <- list();
+ if (missing(data))
+        data <- environment(formula)
+  call <- mf  <- match.call(expand.dots = FALSE)
+  m <- match(c("formula", "data", "weights"),names(mf), 0)
+  mf <- mf[c(1, m)]
+  mf$drop.unused.levels <- FALSE
+  mf[[1]] <- as.name("model.frame")
+  mf <- eval(mf, parent.frame())
+  Terms <- attr(mf,"terms");
+  for (i in 1:ntree){
+    print(paste("Compute tree # ",i,"/",ntree,sep=""));
+    tmpdata <- mf[sample(nrow(mf),ceiling(sampsize*nrow(mf)),replace=replace),]
+    forest <- c(forest,list(TreeRank(formula,tmpdata,bestresponse,varsplit=varsplit,...)));
+  }
+  ret <- list(forest= forest,ntree = ntree);
+  class(ret) <- "TR_forest";
+  ret
+}
+
+
 #################################################################################
 #
 # TreeRank(formula,data,bestresponse,weights,growing,LeafRank,nfcv)
@@ -225,29 +329,18 @@ TreeRankRec <- function(formula, data, response, bestresponse, weights = NULL, g
 #               classifier has to take at least args : formula, data, bestresponse, weights
 #                   and returns -1/+1 : best/worst ones
 #    pruning : pruning control
+#    nfcv :  number of cases for  n-fold cross pruning procedure , 0 or 1 = no pruning.
+#    varsplit : percent of variables to be used for each node.
 #
 #################################################################################
 
 
-TreeRankForest <- function(nbforest=5,...){
-  forest <- list();
-  for (i in 1:nbforest){
-    print(paste("Compute tree # ",i,"/",nbforest,sep=""));
-    forest <- c(forest,list(TreeRank(...)));
-  }
-  ret <- list(forest= forest,nbforest = length(forest));
-  class(ret) <- "TR_forest";
-  ret
-}
 
-
-
-TreeRank <- function(formula, data,bestresponse, weights=NULL,growing = growing_ctrl(), LeafRank = LRCart,nfcv=0,cbFct=NULL,prcSplitVar=1,prcSplitData=1)
+TreeRank <- function(formula, data,bestresponse, weights=NULL,growing = growing_ctrl(), LeafRank = LRCart,nfcv=0,varsplit=1)
 {
 
 
   #Prepare the call to the recursive TreeRank function
-  
   if (missing(data))
         data <- environment(formula)
   call <- mf  <- match.call(expand.dots = FALSE)
@@ -258,19 +351,17 @@ TreeRank <- function(formula, data,bestresponse, weights=NULL,growing = growing_
   mf <- eval(mf, parent.frame())
   Terms <- attr(mf,"terms");
   y <- model.response(mf);
-  weights <- model.extract(mf,"weights");
-  if (length(weights)==0L) weights <- rep.int(1,length(y));
-  rn <- names(mf)[1] 
-  x <- mf[, colnames(mf) != "(weights)"]
-  inputs <- which(!(colnames(x) %in% rn ))
-  idxVar <- colnames(x);
-  idxData <-1:nrow(data);
-  if (prcSplitVar<1){
-    idxVar <- c(which(colnames(x)%in%rn),sample(inputs,ceiling(length(inputs)*prcSplitVar)));
-  }
-  if (prcSplitData<1){
-    idxData <-sample(nrow(data),ceiling(nrow(data)*prcSplitData))
-  }
+  w <- model.extract(mf,"weights");
+  if (length(w)==0L) w <- rep.int(1,length(y));
+  treeMaster <- TreeRankRec(formula = formula, data = mf, bestresponse  = bestresponse,growing = growing, LeafRank =LeafRank,varsplit=varsplit)
+   
+#  if (prcSplitVar<1){
+    #idxVar <- c(which(colnames(x)%in%rn),sample(inputs,ceiling(length(inputs)*prcSplitVar)));
+  #}
+
+  #if ((prcSplitData<1) || dataRepl){
+    #idxData <-sample(nrow(data),ceiling(nrow(data)*prcSplitData),replace=dataRepl)
+  #}
   
 #  colname.list <-c(names(data),".TRvar");
 #  cols <-lapply(colname.list,function(x)numeric(0));
@@ -278,10 +369,9 @@ TreeRank <- function(formula, data,bestresponse, weights=NULL,growing = growing_
 #  dataN <- do.call("data.frame",cols);
 
     #Build the Master TreeRank
-  tmpTRdata <- mf[idxData,idxVar];
-  tmpTRy <- y[idxData];
-  treeMaster <- TreeRankRec(formula = formula, data = tmpTRdata, response = tmpTRy, bestresponse  = bestresponse, weights = weights[idxData], growing = growing, LeafRank =LeafRank,cbFct=cbFct)
-   
+ #tmpTRdata <- mf[idxData,idxVar];
+  #tmpTRy <- y[idxData];
+ 
   #Compute the TreeRank object
   treeMaster$terms <- Terms;
   treeMaster$formula <- formula;
@@ -292,9 +382,8 @@ TreeRank <- function(formula, data,bestresponse, weights=NULL,growing = growing_
   #Do the pruning
   if (nfcv>1){
       print("pruning master tree...");
-      tmpTR <- function(...){TreeRank(LeafRank = LeafRank,growing = growing,cbFct=cbFct,...)}
-      tmpPDdata<- tmpTRdata;
-      ret <- pruneCV(ret,formula,tmpPDdata,bestresponse,DTalgo = tmpTR,nfcv);
+      tmpTR <- function(...){TreeRank(LeafRank = LeafRank,growing = growing,...)}
+      ret <- pruneCV(ret,formula,mf,bestresponse,DTalgo = tmpTR,nfcv);
     }
   ret
 }

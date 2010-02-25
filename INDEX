@@ -1,0 +1,6 @@
+Gauss2D                 Artificial data sets for the TreeRank Package
+LeafRank                LeafRank functions for internal split of
+                        TreeRank master trees
+TRGui                   Graphical interfaces for the TreeRank package.
+TreeRank                TreeRank
+TwoSample               TreeRank procedure for the two sample problem.

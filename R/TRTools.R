@@ -82,7 +82,51 @@ getROC <- function(obj,data =NULL){
 }
 
 
-          
+getPREC <- function(obj,data =NULL){
+  UseMethod("getPREC");
+}
+
+
+getCurves <- function(obj,data=NULL){
+UseMethod("getCurves");
+}
+
+getCurves.TR_TreeRank <- function(obj,data=NULL){
+tree <- obj;
+  if (!inherits(tree,"TR_TreeRank"))
+    stop("object not of class TR_TreeRank");
+  
+  if(is.null(data))
+data <- obj$data;
+  score <- predict(tree,data);
+  #Extract the name of the response variable
+  resname <-all.vars(terms(tree))[[attr(terms(tree),"response")]];
+  response <- data[[resname]];
+  #compute the predicted score for data
+   prec <- getPRECfromScore(score,response,tree$bestresponse);
+  roc<- getROCfromScore(score,response,tree$bestresponse);
+  c(list(roc),list(prec))
+}          
+
+
+
+getPREC.TR_TreeRank <- function(obj, data=NULL){
+tree <- obj;
+  if (!inherits(tree,"TR_TreeRank"))
+    stop("object not of class TR_TreeRank");
+  
+  if(is.null(data)){
+  data <- tree$data
+  }
+  score <- predict(tree,data);
+  #Extract the name of the response variable
+  resname <-all.vars(terms(tree))[[attr(terms(tree),"response")]];
+  response <- data[[resname]];
+  #compute the predicted score for data
+   res <- getPRECfromScore(score,response,tree$bestresponse);
+  res
+}          
+
 getROC.TR_TreeRank <- function(obj, data=NULL){
 tree <- obj;
   if (!inherits(tree,"TR_TreeRank"))
@@ -96,12 +140,22 @@ tree <- obj;
   resname <-all.vars(terms(tree))[[attr(terms(tree),"response")]];
   response <- data[[resname]];
   #compute the predicted score for data
-# if (pr){
- #  res <- getPRECfromScore(score,response,tree$bestresponse);}
-#else{
+
   res <- getROCfromScore(score,response,tree$bestresponse);
-#}
   res
+}
+
+getPREC.TR_forest <- function(obj,data=NULL){
+tree <- obj;
+  if (!(inherits(tree,"TR_forest")))
+    stop("objectnot of class TR_forest");
+  if (is.null(data))
+    data <- tree$forest[[1]]$data
+    score <- predict(tree,data);
+    resname<- all.vars(terms(tree$forest[[1]]))[[attr(terms(tree$forest[[1]]),"response")]];
+    response <- data[[resname]];
+      roc <- getPRECfromScore(score,response,tree$forest[[1]]$bestresponse);
+     roc
 }
 
 getROC.TR_forest <- function(obj,data=NULL){
@@ -113,14 +167,28 @@ tree <- obj;
     score <- predict(tree,data);
     resname<- all.vars(terms(tree$forest[[1]]))[[attr(terms(tree$forest[[1]]),"response")]];
     response <- data[[resname]];
-#    if (pr){
- #     roc <- getPRECfromScore(score,response,tree$forest[[1]]$bestresponse);}
-#else{
+
     roc <- getROCfromScore(score,response,tree$forest[[1]]$bestresponse);
-#}
   roc
 }
 
+
+
+
+getCurves.TR_forest <- function(obj,data=NULL){
+tree <- obj;
+  if (!(inherits(tree,"TR_forest")))
+    stop("objectnot of class TR_forest");
+  if (is.null(data))
+    data <- tree$forest[[1]]$data
+    score <- predict(tree,data);
+    resname<- all.vars(terms(tree$forest[[1]]))[[attr(terms(tree$forest[[1]]),"response")]];
+    response <- data[[resname]];
+
+    roc <- getROCfromScore(score,response,tree$forest[[1]]$bestresponse);
+    prec <- getPRECfromScore(score,response,tree$forest[[1]]$bestresponse);
+  c(list(roc),list(prec))
+}
 
 
 
@@ -194,11 +262,11 @@ getPRECfromScore <- function(score,y,bestresponse){
     }
   }
 
-  
-  alphaList <- c(alphaList,curAlpha)
-  betaList <- c(betaList,curBeta)
-  prec <- betaList/pcount;
-  rec <-  betaList/(alphaList+betaList);
+  	
+  alphaList <- c(alphaList[-1],curAlpha)
+  betaList <- c(betaList[-1],curBeta)
+  prec <- c(0,betaList/pcount,1);
+  rec <-  c(1,betaList/(alphaList+betaList),0);
   matrix(c(prec,rec),length(prec))
 }
 #prec TP/TP+FP
@@ -283,10 +351,19 @@ else{
       idVar <- which(names(tree$model)==frame$var[[i]])
       tmpname <- as.character(frame[i,"var"]);
 
-      if (attributes(tree$terms)$dataClasses[tmpname] == "numeric")
+      if (attributes(tree$terms)$dataClasses[tmpname] == "numeric"){
         br <- as.numeric(splits[,"index"][[sortSplit[[idsplit]]]])
-      else br <- splits[,"index"][[sortSplit[[idsplit]]]];
-      split[i]<-list(list(idVar=idVar,name=tmpname,breaks = br));
+      split[i]<-list(list(idVar=idVar,name=tmpname,breaks = br,type=0));
+	}
+      else
+	{
+ 	br <- splits[,"index"][[sortSplit[[idsplit]]]];
+	lev <- which(tree$csplit[br,] == 3);
+	levVal <- attr(tree,"xlevels")[tmpname][[1]];
+	# print(lev)
+	lev <- strsplit(levVal, " ")[lev];
+      	split[i]<-list(list(idVar=idVar,name=tmpname,breaks = lev,type=1));
+	}
       #      sp <- partysplit(idVar, breaks = splits[,"index"][[sortSplit[[idsplit]]]],right=FALSE);
       kidslist[i] = list(c(lnode,rnode));
       parentslist[lnode]<-parentslist[rnode]<-i;
@@ -788,7 +865,9 @@ varImportance.TR_forest <- function(obj,norm=TRUE){
   res <- array(0,length(nr))
   names(res) <- nr
   for (i in obj$forest){
+
     restmp <- varImportance(i,FALSE);
+    if (is.null(restmp)){return(NULL);}
     for (j in 1:length(restmp)){
       id <- which(names(restmp[j])==names(res));
       res[id] <- res[id]+restmp[j];
@@ -806,7 +885,9 @@ varImportance.TR_TreeRank<- function(obj,norm=TRUE){
   names(res) <- nr
   
   for (i in obj$inner){
+
     restmp <- varImportance(getClassifier(obj,i),FALSE)
+    if (is.null(restmp)){return(NULL);}
     for (j in 1:length(restmp)){
       id <- which(names(restmp[j])==names(res));
       res[id] <- res[id]+restmp[j]*((obj$pcount[i]*obj$ncount[i])/(obj$pcount[obj$root]*obj$ncount[obj$root]))^2;
@@ -829,13 +910,13 @@ plotROC <- function( rocs,colorlist = NULL,points=NULL){
           par(new = T);
           if (nrow(curr[[j]])<100){type <- "b"}
           else{type <-"l"}
-          plot(curr[[j]], type=type, col= colorlist[[(i-1) %% length(colorlist) + 1]], xlab="",ylab="")
+          plot(curr[[j]], type=type, col= colorlist[[(i-1) %% length(colorlist) + 1]], xlab="",ylab="",xlim=c(0,1),ylim=c(0,1))
         }
       }else{
         par(new=T);
         if (nrow(rocs[[i]])<100){type <- "b"}
         else{type <-"l"}
-        plot(rocs[[i]], type=type, col= colorlist[[(i-1) %% length(colorlist) + 1]], xlab="",ylab="")
+        plot(rocs[[i]], type=type, col= colorlist[[(i-1) %% length(colorlist) + 1]], xlab="",ylab="",xlim=c(0,1),ylim=c(0,1))
       }
     }
     
@@ -844,7 +925,7 @@ plotROC <- function( rocs,colorlist = NULL,points=NULL){
       tmpm<- matrix(unlist(points),nrow=2);
       par(new=T);
       
-      plot(x=tmpm[1,],y=tmpm[2,],xlab="",ylab="");
+      plot(x=tmpm[1,],y=tmpm[2,],xlab="",ylab="",xlim=c(0,1),ylim=c(0,1));
       
     }
     
@@ -861,26 +942,29 @@ plotROC <- function( rocs,colorlist = NULL,points=NULL){
 
 TreeRankBagging <- function(forest){
   
-  res <- list(forest= forest, nbforest = length(forest));
+  res <- list(forest= forest, ntree = length(forest));
   class(res) <- "TR_forest"
   res
 }
 
 
-predict.TR_forest<- function(object, newdata = NULL,...){
-  if (!inherits(object,"TR_forest"))
-    stop("Object not of class TR_forest");
-  
-  if (is.null(newdata))
-    newdata <- object$forest[[1]]$data;
-  res <- array(0,dim=length(newdata[,1]))
-  for (i in length(object$forest))
-  {
-    tmp <- predict(object$forest[[i]],newdata);
-    res <- res + tmp;
+
+varDep <- function(obj,data,varx,vary,vminx=min(data[varx]),vmaxx=max(data[varx]),vminy=min(data[vary]),vmaxy=max(data[vary]),subdivx=100,subdivy=subdivx){
+
+   nbex <- nrow(data);
+nc <- which(colnames(data) %in%c(varx,vary));
+seqx <-  seq(vminx,vmaxx,length.out=subdivx);
+seqy <- seq(vminy,vmaxy,length.out=subdivy);
+ret <- matrix(nrow=subdivx,ncol=subdivy,dimnames=list(seqx,seqy));
+  for (i in 1:length(seqx)){
+    for(j in 1:length(seqy)){
+   data[,nc[1]] <- seqx[i];
+   data[,nc[2]] <- seqy[j];
+   pre <-  sum(predict(obj,data)/nbex);
+   ret[i,j] <-pre;
   }
-  res <- res / object$nbforest;
-  res
+  }
+ret;
 }
 
 

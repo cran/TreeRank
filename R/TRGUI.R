@@ -27,15 +27,11 @@ cartOpt <- list(
 
                 list(name="Min. Crit.",default=0,type="entry",optName="mincrit"),
                 list(name="Maximum Depth",default=10,type="entry",optName="maxdepth"),
-                list(name="n-fold",default=0,type="entry",optName="nfcv"),
-                list(name="%Var. Split",default=100,type="entry",optName="varsplit"),
-                list(name="%Data Split",default=100,type="entry",optName="datasplit")
+                list(name="n-fold",default=0,type="entry",optName="nfcv")
                 );
 LRCartopt2cmd <-function(obj){
   return(paste("maxdepth=",obj$maxdepth,
                ",minsplit=",obj$minsplit,",mincrit=",obj$mincrit,
-               ",prcSplitVar=",(obj$varsplit/100),
-               ",prcSplitData=",(obj$datasplit/100),
                ",nfcv=",obj$nfcv,sep=""));
 }
 LRsvmopt2cmd <- function(obj){
@@ -70,11 +66,28 @@ LRsvm.def <- list(name="svm",fun="LRsvm",
                        list(name="Degre/Sigma",default=1,type="entry",optName="sigma"),
                        list(name="scale",default=1,type="entry",optName="scale"),
                        list(name="offset",default=1,type="entry",optName="offset"),
-                       list(name="%Var. Split",default=100,type="entry",optName="varsplit"),
-                       list(name="%Data Split",default=100,type="entry",optName="datasplit"),
                        list(name="Kernel",default=0,type="listbox",optName="kernel",choiceName=c("RBF","Poly.","TanHyp"),choice=c("rbfdot","polydot","tanhdot")),
                        list(name="Auto. Parameters",default=TRUE,type="check",optName="auto")),
                   opt2cmd=LRsvmopt2cmd);
+
+
+forestOpt<- list(list(name="#Tree",default=50,type="entry",optName="ntree"),
+			 list(name="#Var",default="0",type="entry",optName="mtry"),
+			 list(name="%Data", default ="100",type="entry",optName="prcsize"),
+			 list(name="replace",default=TRUE,type="check",optName="replace"),
+			 list(name="node size",default=1,type="entry",optName="nodesize"),
+			 list(name="Max Leaves",default=0,type="entry",optName="maxnodes"));
+
+LRforest2cmd <- function(obj){
+tmp <- paste("ntree=",obj$ntree,",nodesize=",obj$nodesize,",replace=",obj$replace,sep="");
+if (obj$mtry!=0) tmp <- paste(tmp,",mtry=",obj$mtry,sep="");
+if (obj$prcsize !=100)tmp<- paste(tmp,",prcsize=",obj$prcsize/100,sep="");
+if (obj$maxnodes !=0) tmp <- paste(tmp,",maxnodes=",obj$maxnodes,sep="");
+tmp
+}
+
+			 
+LRforest.def <- list(name="randomForest",fun="LRforest",opt=forestOpt,opt2cmd=LRforest2cmd);
 
 
 #########################################################
@@ -124,6 +137,7 @@ TRGui <- function(){
   varSplitTR <- tclVar(100);
   dataSplitTR <- tclVar(100);
   nfcvOptTR <-tclVar("0");
+  replOptTR <- tclVar("1");
   entry.minOptTR <-tkentry(optTRFrame,width="5",textvariable=minOptTR);
   entry.mincritOptTR <-tkentry(optTRFrame,width="5",textvariable=mincritOptTR);
   entry.maxOptTR <-tkentry(optTRFrame,width="5",textvariable=maxOptTR);
@@ -131,15 +145,17 @@ TRGui <- function(){
   entry.varSplitTR <- tkentry(optTRFrame,width="5",textvariable=varSplitTR);
   entry.dataSplitTR <- tkentry(optTRFrame,width="5",textvariable= dataSplitTR);
   entry.nfcvOptTR <- tkentry(optTRFrame,width=5,textvariable=nfcvOptTR);
+  entry.replOptTR <- tkcheckbutton(optTRFrame,variable = replOptTR);
 
   tkgrid(tklabel(optTRFrame,text="Minimum Split"),entry.minOptTR,
-         tklabel(optTRFrame,text="Min. Criteria"),entry.mincritOptTR);
-  tkgrid(tklabel(optTRFrame,text="Maximum Depth"),entry.maxOptTR,
          tklabel(optTRFrame,text="Forest"),entry.forestOptTR);
-  tkgrid(tklabel(optTRFrame,text="%Var. split"),entry.varSplitTR,
+  tkgrid(tklabel(optTRFrame,text="Maximum Depth"),entry.maxOptTR,
          tklabel(optTRFrame,text="%Data. split"),entry.dataSplitTR);
-  tkgrid(tklabel(optTRFrame,text="n-fold Cross Validation "),entry.nfcvOptTR);
-  
+  tkgrid(tklabel(optTRFrame,text="Min. Criteria"),entry.mincritOptTR,
+         tklabel(optTRFrame,text="Replace"),entry.replOptTR);
+  tkgrid(tklabel(optTRFrame,text="n-fold Cross Validation "),entry.nfcvOptTR,
+	    tklabel(optTRFrame,text="%Var. split"),entry.varSplitTR);
+   
   tkgrid(tklabel(TRFrame,text="TreeRank Options"));
   tkgrid(optTRFrame);
 
@@ -149,13 +165,14 @@ TRGui <- function(){
   #LeafRank
   ## Scan the environment for new LeafRank functions definition
   LRlist <- ls(pattern="LR.*.def",name=globalenv());
-  nameLR <- list(LRCart.def$name,LRsvm.def$name);
-  funNameLR <- list(LRCart.def$fun,LRsvm.def$fun);
-  optionLR <- list(LRCart.def$opt,LRsvm.def$opt);
-  opt2cmdLR <- list(LRCart.def$opt2cmd,LRsvm.def$opt2cmd);
+  nameLR <- list(LRCart.def$name,LRsvm.def$name,LRforest.def$name);
+  funNameLR <- list(LRCart.def$fun,LRsvm.def$fun ,LRforest.def$fun);
+  optionLR <- list(LRCart.def$opt,LRsvm.def$opt,LRforest.def$opt);
+  opt2cmdLR <- list(LRCart.def$opt2cmd,LRsvm.def$opt2cmd,LRforest.def$opt2cmd);
   lbLR <- tklistbox(LRFrame,height=3,width=10,selectmode="single");
   tkinsert(lbLR,"end",LRCart.def$name);
   tkinsert(lbLR,"end",LRsvm.def$name);
+  tkinsert(lbLR,"end",LRforest.def$name);
   for (x in LRlist){
     obj <- eval(parse(text=x),globalenv())
     nameLR <- c(nameLR,obj$name);
@@ -259,6 +276,8 @@ TRGui <- function(){
     varSplitTRV <- as.numeric(tclvalue(varSplitTR));
     dataSplitTRV <- as.numeric(tclvalue(dataSplitTR));
     forestTRV <- as.numeric(tclvalue(forestOptTR));
+
+   replTRV <- as.logical(as.numeric(tclvalue(replOptTR)));
     if (is.null(datasetV)||is.null(resnameV)||is.null(bestresponseV)
         ||is.null(minOptTRV)||is.null(maxOptTRV)||is.null(mincritOptTRV)
         ||is.null(nfcvOptTRV)
@@ -271,10 +290,6 @@ TRGui <- function(){
     grTRctrl <- paste("growing_ctrl(maxdepth=",maxOptTRV,",mincrit=",mincritOptTRV,",minsplit=",minOptTRV,")",sep="");
                                         #    prTRctrl <- paste("pruning_ctrl(prune=",pruneOptTRV,",strat=",stratOptTRV,",nfcv=",nfcvOptTRV,")",sep="");
  #   prTRctrl <- paste("pruning_ctrl(prune=TRUE,strat=FALSE,nfcv=",nfcvOptTRV,")",sep="");
-    listx <- 0;
-    listy <- 0;
-    pcinit <-0;
-    ncinit <-0;
                                         #cb <-function(id,depth,pc,nc,pck,nck){
                                         # if (length(listx)==0){
                                         #  pcinit <- pc;
@@ -286,14 +301,15 @@ TRGui <- function(){
                                         # print(paste(id,depth,pc,nc,pck,nck,sep=" "));
                                         #}
     if  (forestTRV>1){
-    cmd <-  paste("TreeRankForest(formula=",resnameV,"~., data=",datasetV,",bestresponse=\"",bestresponseV,"\",growing=",grTRctrl,",nfcv=",nfcvOptTRV,",LeafRank= function(...){",funNameLR[[idLR]],"(",optLR,",...)},prcSplitVar=",(varSplitTRV/100),",prcSplitData=",(dataSplitTRV/100),",nbforest=",forestTRV,")",sep="");
+    cmd <-  paste("TreeRankForest(formula=",resnameV,"~., data=",datasetV,",bestresponse=\"",bestresponseV,"\"",",ntree=",forestTRV,",replace=",replTRV,",sampsize=",(dataSplitTRV/100),",varsplit=", (varSplitTRV/100),",growing=",grTRctrl,",nfcv=",nfcvOptTRV,",LeafRank= function(...){",funNameLR[[idLR]],"(",optLR,",...)})",sep="");
   }
-    else     cmd <-  paste("TreeRank(formula=",resnameV,"~., data=",datasetV,",bestresponse=\"",bestresponseV,"\",growing=",grTRctrl,",nfcv=",nfcvOptTRV,",LeafRank= function(...){",funNameLR[[idLR]],"(",optLR,",...)},prcSplitVar=",(varSplitTRV/100),",prcSplitData=",(dataSplitTRV/100),")",sep="");
-    return(cmd);
-    
+    else     cmd <-  paste("TreeRank(formula=",resnameV,"~., data=",datasetV,",bestresponse=\"",bestresponseV,"\",growing=",grTRctrl,",nfcv=",nfcvOptTRV,",LeafRank= function(...){",funNameLR[[idLR]],"(",optLR,",...)})",sep="");
+print(cmd);
+    return(cmd);   
   }
   
   runGui <- function(){
+
     tree <- eval(parse(text=cmdLine()),.GlobalEnv);
     assign("tree",tree,.GlobalEnv);
     TRplot(tree);
@@ -330,7 +346,7 @@ TRGui <- function(){
                                         #tkgrid(but.exp);
   tkgrid(mainFrame);
   tkfocus(top);
-  invisible(NULL);
+  
 }
 
 
@@ -397,7 +413,7 @@ TRplot <- function(tree,top= NULL){
   trg.id <- .TRgui.new(list(top=top,nodeSize = 10,panX=50,panY=50,maxNodeSize=30,minNodeSize=5,tree=tree,treeType = treeType));
     if (treeType==2){
       .TRgui.set(trg.id,"forest",tree);
-      .TRgui.set(trg.id,"nbforest",tree$nbforest);
+      .TRgui.set(trg.id,"ntree",tree$ntree);
       .TRgui.set(trg.id,"tree",tree$forest[[1]]);
       .TRgui.set(trg.id,"forestCur",1);
     }
@@ -446,7 +462,8 @@ TRplot <- function(tree,top= NULL){
     ret <- paste("                                \nNode: ",i,
                  "\nDauc: ",format(tree$ldauc[[i]],digits=3),
                  "\n#Pos: ",tree$pcount[[i]],
-                 "\n#Neg: ",tree$ncount[[i]],"\n",sep="");
+                 "\n#Neg: ",tree$ncount[[i]],
+		 "\nratio: ",format(tree$pcount[[i]]/(tree$pcount[[i]]+tree$ncount[[i]]),digits=3),"\n",sep="");
     
   }
   if (trg$treeType != 1){
@@ -489,7 +506,7 @@ TRplot <- function(tree,top= NULL){
           forestscr <- tkscrollbar(frameListROC,
                                    command=function(...)tkyview(foresttl,...))
           tkgrid(tklabel(frameListROC,text="Forest"));
-          for (i in (1:.TRgui.get(trg.id,"nbforest")))
+          for (i in (1:.TRgui.get(trg.id,"ntree")))
             {
               tkinsert(foresttl,"end",i)
             }
@@ -508,7 +525,7 @@ TRplot <- function(tree,top= NULL){
           .TRgui.create.edges(trg.id);
           .TRgui.update.nodes(trg.id);
           .TRgui.refresh(trg.id);
-          .TRgui.addROC(trg.id,getROC(forest$forest[[id]]),paste("Learn. ",id));
+          .TRgui.addROC(trg.id,getCurves(forest$forest[[id]]),paste("Learn. ",id));
           .TRgui.updateROC(trg.id);
           .TRgui.viFrameReplot(trg.id);
           
@@ -517,6 +534,16 @@ TRplot <- function(tree,top= NULL){
           tkgrid.configure(forestscr,sticky="nsw")
           tkbind(foresttl,"<<ListboxSelect>>",changeTree);
         }
+
+  vbROC <- tclVar("1");
+  vbPrec <- tclVar("0");
+    .TRgui.set(trg.id,"vbROC",vbROC);
+   .TRgui.set(trg.id,"vbPrec",vbPrec);
+    cbROC <- tkcheckbutton(frameListROC);
+    cbPrec <- tkcheckbutton(frameListROC);
+    tkconfigure(cbROC,variable=vbROC,command=function(...){.TRgui.updateROC(trg.id)});
+    tkconfigure(cbPrec,variable=vbPrec,command=function(...){.TRgui.updateROC(trg.id)});
+    tkgrid(tklabel(frameListROC,text="ROC"),cbROC,tklabel(frameListROC,text="Prec/Recall"),cbPrec);
     tkgrid(tklabel(frameListROC,text="ROC List"),tklabel(frameListROC,text="auc"));
     tkgrid(frameListROC,sticky="nsew")
     .TRgui.set(trg.id,"frameListROC",frameListROC);
@@ -554,7 +581,7 @@ TRplot <- function(tree,top= NULL){
   viFrame <- .TRgui.get(trg.id,"viFrame");
   if (is.null(vi))return(tkframe(viFrame));
   tkrreplot(viFrame,function() barplot(vi,col=heat_hcl(length(vi))[rank(-vi)]),vscale=0.7);
-  invisible(NULL);
+  
 }
 
 
@@ -634,17 +661,18 @@ TRplot <- function(tree,top= NULL){
    
   tcl(trg$treeCanvas,"scale","all",x,y,zoom,zoom);
 .TRgui.refresh(trg.id);
-  invisible(NULL);
   
 }
     
 .TRgui.frameROC<- function(trg.id){
+
   top <- .TRgui.get(trg.id,"rightFrame");
   tree <- .TRgui.get(trg.id,"tree");
   frameROC <-tkrplot(top,function() 0);
     tabc = rainbow(10);
   .TRgui.set(trg.id,"frameROC",frameROC);
   .TRgui.set(trg.id,"rocList",list());
+  .TRgui.set(trg.id,"precList",list());
   .TRgui.set(trg.id,"aucList",list());
   .TRgui.set(trg.id,"rocListColor",tabc);
   .TRgui.set(trg.id,"rocColor",list());
@@ -652,10 +680,10 @@ TRplot <- function(tree,top= NULL){
   .TRgui.set(trg.id,"listVB",list());
   .TRgui.set(trg.id,"listCB",list());
   if (.TRgui.get(trg.id,"treeType")==2){
-    .TRgui.addROC(trg.id,getROC(.TRgui.get(trg.id,"forest")),"Learn. forest");
+    .TRgui.addROC(trg.id,getCurves(.TRgui.get(trg.id,"forest")),"Learn. forest");
    # .TRgui.addROC(trg.id,getROC(tree),"Learn. 1")
   }
-  .TRgui.addROC(trg.id,getROC(tree),"Learn. 1")
+  .TRgui.addROC(trg.id,getCurves(tree),"Learn. 1")
   tkgrid(frameROC,sticky="nsew");
   .TRgui.updateROC(trg.id);
   frameROC;
@@ -663,10 +691,14 @@ TRplot <- function(tree,top= NULL){
 
 
 
-.TRgui.addROC <- function(trg.id,roc,txt)
+.TRgui.addROC <- function(trg.id,curves,txt)
 {
+
+  roc <- curves[[1]];
+  prec <- curves[[2]];
   trg <- .TRgui.get(trg.id)
   .TRgui.set(trg.id,"rocList",c(trg$rocList,list(roc)));
+  .TRgui.set(trg.id,"precList",c(trg$precList,list(prec)));
   .TRgui.set(trg.id,"aucList",c(trg$aucList,auc(roc)));
   .TRgui.set(trg.id,"rocColor",c(trg$rocColor,trg$rocListColor[[trg$indexColorROC]]));
   .TRgui.set(trg.id,"indexColorROC",(((trg$indexColorROC) %% length(trg$rocListColor))+1));
@@ -679,13 +711,14 @@ TRplot <- function(tree,top= NULL){
   tkgrid(tklabel(frameListROC,text=txt),tklabel(frameListROC,text=format(auc(roc),digits=3)),cb);
   
   .TRgui.updateROC(trg.id);
-  invisible(NULL);
 }
 
 
 .TRgui.updateROC <- function(trg.id){
+
   frame <- .TRgui.get(trg.id,"frameROC");
   rocList <- .TRgui.get(trg.id,"rocList")
+  precList <- .TRgui.get(trg.id,"precList");
   rocColor <- .TRgui.get(trg.id,"rocColor")
   #rocStyle <- .TRgui.get(trg.id,"rocStyle")
   listVB <- as.numeric(sapply(.TRgui.get(trg.id,"listVB"),function(x) tclvalue(x)));
@@ -701,9 +734,20 @@ TRplot <- function(tree,top= NULL){
                                      tree$lbeta[tree$kidslist[[i]][[2]]])));
          }
     }
-#  plotROC(rocList[listVB==1],rocColor[listVB==1],points)
-  tkrreplot(frame,function()plotROC(rocList[listVB==1],rocColor[listVB==1],points))
-  invisible(NULL);
+
+
+	vr <- as.logical(as.numeric(tclvalue(.TRgui.get(trg.id,"vbROC"))));
+	vp <- as.logical(as.numeric(tclvalue(.TRgui.get(trg.id,"vbPrec"))));
+    curlist <- list();
+    corlist <- list(); 
+
+    if (vr) {curlist <- c(curlist,rocList[listVB==1]); corlist <- c(corlist,rocColor[listVB==1]);}
+    if (vp) {curlist <- c(curlist,precList[listVB==1]); corlist <- c(corlist,rocColor[listVB==1]);}
+if (vr)  tkrreplot(frame,fun=function()plotROC(curlist,corlist,points)) 
+else tkrreplot(frame,fun=function()plotROC(curlist,corlist));
+ 
+ top <- .TRgui.get(trg.id,"top");
+tkfocus(top); 
 }
 
   
@@ -714,8 +758,7 @@ TRplot <- function(tree,top= NULL){
   vids <- .TRgui.get.selected.nodes(id)
   for (i in vids)
     TRplot(getClassifier(tree,i));
-  invisible(NULL)
-}
+ }
 
 
 .TRgui.viewSubTree <- function(id){
@@ -723,8 +766,7 @@ TRplot <- function(tree,top= NULL){
   vids <- .TRgui.get.selected.nodes(id)
   if (length(vids)==0) return(FALSE)
   TRplot(subTreeRank(tree,vids))
-  invisible(NULL)
-}
+ }
 
 
 .TRgui.viewUnpruned <- function(id){
@@ -734,8 +776,7 @@ TRplot <- function(tree,top= NULL){
   
   }else
   {TRplot(tree$unpruned)}
-  invisible(NULL)
-}
+ }
 
 .TRgui.plotROCUnpruned <- function(id){
   tree <- .TRgui.get(id,"tree");
@@ -743,10 +784,9 @@ TRplot <- function(tree,top= NULL){
   if (is.null(tree$unpruned)){
     tkmessageBox(title="TreeRank",message="Not pruned tree",type="ok")
   }else{
-  .TRgui.addROC(id,getROC(tree$unpruned),"Unpruned Tree");
+  .TRgui.addROC(id,getCurves(tree$unpruned),"Unpruned Tree");
   .TRgui.updateROC(id);}
-  invisible(NULL)
-}
+ }
 
 
 .TRgui.plotROCSubTree <- function(id){
@@ -754,10 +794,9 @@ TRplot <- function(tree,top= NULL){
   vids <- .TRgui.get.selected.nodes(id)
   if (length(vids)==0) return(FALSE)
   newtree <-subTreeRank(trg$tree,vids)
-  .TRgui.addROC(id,getROC(newtree),"Subtree");
+  .TRgui.addROC(id,getCurves(newtree),"Subtree");
   .TRgui.updateROC(id);
-  invisible(NULL)
-} 
+ } 
 
 .TRgui.submitTestSet <- function(id){
   tree <- .TRgui.get(id,"tree")	
@@ -773,21 +812,21 @@ TRplot <- function(tree,top= NULL){
       if ((.TRgui.get(id,"treeType")==2)){
   #      if (as.numeric(tclvalue(vb))!=0){
         forest <- .TRgui.get(id,"forest");
-        roc <- eval(parse(text=paste("getROC(forest,",NameVal,")",sep="")));
+        roc <- eval(parse(text=paste("getCurves(forest,",NameVal,")",sep="")));
         .TRgui.addROC(id,roc,paste(NameVal,"forest"));
       }
-      roc <- eval(parse(text=paste("getROC(tree,",NameVal,")",sep="")))
+      roc <- eval(parse(text=paste("getCurves(tree,",NameVal,")",sep="")))
       if ((.TRgui.get(id,"treeType")==2))
         .TRgui.addROC(id,roc,paste(NameVal,.TRgui.get(id,"forestCur")))
       else      .TRgui.addROC(id,roc,NameVal);
       .TRgui.updateROC(id);
+
     }
   OK.but <-tkbutton(tt,text="  set  ",command=OnOK)
   tkbind(entry.Name, "<Return>",OnOK)
   tkgrid(OK.but)
   tkfocus(tt)
-  invisible(NULL)
-}
+  }
 
 .TRgui.addExtROC <- function(id){
   tt <- tktoplevel()
@@ -801,15 +840,14 @@ TRplot <- function(tree,top= NULL){
       tkdestroy(tt)
       roc <- eval(parse(text=NameVal));
       trg <- .TRgui.get(id);
-      .TRgui.addROC(id,as.matrix(roc),NameVal)
+      .TRgui.addROC(id,c(list(as.matrix(roc)),list(c(0,0))),NameVal)
       .TRgui.updateROC(id);
     }
   OK.but <- tkbutton(tt,text="  set  ",command=OnOK)
   tkbind(entry.Name,"<Return>",OnOK)
   tkgrid(OK.but)
   tkfocus(tt)
-  invisible(NULL)
-}
+  }
 
 
 .TRgui.exportTree <- function(trg.id){
@@ -829,13 +867,13 @@ TRplot <- function(tree,top= NULL){
   tkbind(entry.Name,"<Return>",OnOk);
   tkgrid(OK.but);
   tkfocus(tt)
-  invisible(NULL);
 }
 
 
  .TRgui.exportROC <- function(trg.id){
   tt <- tktoplevel()
   rocList <- .TRgui.get(trg.id,"rocList")
+  precList <- .TRgui.get(trg.id,"precList");
   rocColor <- .TRgui.get(trg.id,"rocColor");
   listVB <-  as.numeric(sapply(.TRgui.get(trg.id,"listVB"),function(x) tclvalue(x)));
   name <- tclVar("file.eps")
@@ -846,7 +884,14 @@ TRplot <- function(tree,top= NULL){
     NameVal <- tclvalue(name);
     tkdestroy(tt);
     postscript(NameVal)
-    plotROC(rocList[listVB==1],rocColor[listVB==1]);
+   
+	vr <- as.logical(as.numeric(tclvalue(.TRgui.get(trg.id,"vbROC"))));
+	vp <- as.logical(as.numeric(tclvalue(.TRgui.get(trg.id,"vbPrec"))));
+    curlist <- list();
+    corlist <- list();
+    if (vr) {curlist <- c(curlist,rocList[listVB==1]); corlist <- c(corlist,rocColor[listVB==1]);}
+    if (vp) {curlist <- c(curlist,precList[listVB==1]); corlist <- c(corlist,rocColor[listVB==1]);}
+    plotROC(curlist,corlist)
     dev.off()
     tkmessageBox(title= "Info",message="ROC saved",type="ok")
 
@@ -855,8 +900,7 @@ TRplot <- function(tree,top= NULL){
   tkbind(entry.Name,"<Return>",OnOk);
   tkgrid(OK.but);
   tkfocus(tt)
-  invisible(NULL);
-}
+ }
 .TRgui.saveTree <- function(id){
   tr <- .TRgui.get(id,"tree")
   tt <- tktoplevel()
@@ -874,8 +918,7 @@ TRplot <- function(tree,top= NULL){
   tkbind(entry.Name,"<Return>",OnOk)
   tkgrid(OK.but)
   tkfocus(tt)
-  invisible(NULL)
-}
+ }
   
 .TRgui.refresh <-function(trg.id){
   trg <- .TRgui.get(trg.id);
@@ -884,7 +927,6 @@ TRplot <- function(tree,top= NULL){
   if(length(bbox>1)){
   tkconfigure(trg$treeCanvas, scrollregion =c(bbox[[1]],bbox[[2]],bbox[[3]],bbox[[4]]));
   .TRgui.set(trg.id,"treeScrollRegion",bbox);}
-  invisible(NULL)
 }
 
 
@@ -936,7 +978,6 @@ TRplot <- function(tree,top= NULL){
     tkaddtag(trg$treeCanvas,"label","withtag",litem);
     tkaddtag(trg$treeCanvas,paste(sep="","elabel-",id),"withtag",litem)
   }
-  invisible(NULL)
   
 }
 
@@ -964,8 +1005,7 @@ TRplot <- function(tree,top= NULL){
     mapply(function(n,  x, y) .TRgui.create.node(trg.id, n, NULL, x, y),
            tree$nodes,  trg$treeCoords[,1], trg$treeCoords[,2])
  }
-  invisible(NULL)
-}
+ }
 
 
 .TRgui.create.edges <- function(trg.id) {
@@ -978,7 +1018,9 @@ TRplot <- function(tree,top= NULL){
     edgeLab <- unlist(lapply(tree$inner,function(x)
                                 {sp <- tree$split[[x]];
                                  if (!(is.null(sp))){
-                                   lab <-c(paste("<",format(sp$breaks,digits=3)),paste(">=",format(sp$breaks,digits=3)));
+				  if (sp$type==0)
+                                   lab <-c(paste("<",format(sp$breaks,digits=3)),paste(">=",format(sp$breaks,digits=3)))
+				else lab <- c(paste("!=",sp$breaks),paste("=",sp$breaks));
                                    return(strtrim(lab,8));
                                  }
                                  else{return(c("",""))}}))
@@ -995,8 +1037,7 @@ TRplot <- function(tree,top= NULL){
            edgematrix[,1],
            edgematrix[,2], 1:nrow(edgematrix))
  }
-  invisible(NULL)
-}
+ }
 
 
 
@@ -1023,7 +1064,6 @@ TRplot <- function(tree,top= NULL){
   for (i in seq(along=edge.from.ids)) {
     .TRgui.update.edge(trg.id, edge.from.ids[i])
   }
-  invisible(NULL)
 }
 
 .TRgui.update.nodes <- function(trg.id) {
@@ -1031,14 +1071,12 @@ TRplot <- function(tree,top= NULL){
   n <- trg$tree$nbNode;
   mapply(function(v, x, y) .TRgui.update.node(trg.id, v, x, y), 1:n,
          trg$treeCoords[,1], trg$treeCoords[,2])
-  invisible(NULL);
-}
+ }
 .TRgui.update.edges <- function(trg.id) {
   trg <- .TRgui.get(trg.id)
   n <- length(length(trg$tree$inner)*2);
   mapply(function(v) .TRgui.update.edgeById(trg.id, v), 1:n);
-  invisible(NULL);
-}
+ }
 
 # Update an edge with given itemid (not edge id!)
 .TRgui.update.edge <- function(trg.id, itemid) {
@@ -1056,7 +1094,6 @@ TRplot <- function(tree,top= NULL){
   from.c[2] <- from.c[2] + trg$sizeNodeList[[from]]*sin(phi)
 
   tkcoords(trg$treeCanvas, itemid, from.c[1], from.c[2], to.c[1], to.c[2]);
-  invisible(NULL);
 }  
 
 
@@ -1065,7 +1102,6 @@ TRplot <- function(tree,top= NULL){
   trg <- .TRgui.get(trg.id)
   itemid <- as.numeric(tkfind(trg$treeCanvas,"withtag",paste("edge-",id,sep="")));
   .TRgui.update.edge(trg.id,itemid);
-  invisible(NULL)
 }  
 
 
@@ -1086,7 +1122,6 @@ TRplot <- function(tree,top= NULL){
   .TRgui.set(trg.id,"width",width);
   .TRgui.set(trg.id,"height",height);
   .TRgui.set(trg.id,"treeCoords",treeCoords);
-  invisible(NULL)
   
 }
   
@@ -1119,7 +1154,6 @@ TRplot <- function(tree,top= NULL){
   .TRgui.set(trg.id,"treeCoords",treeCoords);
   .TRgui.set(trg.id,"treeCoordsNorm",treeCoords);
   .TRgui.set(trg.id,"edgesList",edgematrix)
-  invisible(NULL)
 }  
 
 
@@ -1128,7 +1162,9 @@ TRplot <- function(tree,top= NULL){
   .TRgui.scale(trg.id);
   .TRgui.update.nodes(trg.id);
   .TRgui.refresh(trg.id);
-  invisible(NULL)
+
+ top <- .TRgui.get(trg.id,"top");
+tkfocus(top);
 }
 
 
@@ -1160,7 +1196,6 @@ TRplot <- function(tree,top= NULL){
   cmd <- paste(sep="", "trg.", trg.id, "$", what, "<-tmp")
   eval(parse(text=cmd), .TRgui.env)
   rm("tmp", envir=.TRgui.env)
-  invisible(NULL)
 }
 
 
@@ -1170,7 +1205,6 @@ TRplot <- function(tree,top= NULL){
   for (i in ids) {
     .TRgui.deselect.this(trg.id, i)
   }
-  invisible(NULL)
 }
 
 .TRgui.select.all.nodes <- function(trg.id) {
@@ -1179,7 +1213,6 @@ TRplot <- function(tree,top= NULL){
   for (i in nodes) {
     .TRgui.select.node(trg.id, i)
   }
-  invisible(NULL)
 }
 
 .TRgui.select.some.nodes <- function(trg.id, vids) {
@@ -1190,7 +1223,6 @@ TRplot <- function(tree,top= NULL){
                               paste(sep="", "node&&n-", i)))
     .TRgui.select.node(trg.id, tkid)
   }
-  invisible(NULL)
 }
 
 
@@ -1201,7 +1233,6 @@ TRplot <- function(tree,top= NULL){
                   "-width", 2);
   
   .TRgui.updateROC(trg.id);
-  invisible(NULL)
 }
 
 .TRgui.deselect.node <- function(trg.id, tkid) {
@@ -1214,21 +1245,18 @@ TRplot <- function(tree,top= NULL){
   tkitemconfigure(treeCanvas, tkid, "-outline",outColorNode[[id]],
                   "-width", 1)
   .TRgui.updateROC(trg.id);
-  invisible(NULL)
 }
 
 .TRgui.select.current <- function(trg.id) {
   treeCanvas <- .TRgui.get(trg.id, "treeCanvas")
   tkid <- as.numeric(tkfind(treeCanvas, "withtag", "current"))
   .TRgui.select.this(trg.id, tkid)
-  invisible(NULL)
 }
 
 .TRgui.deselect.current <- function(trg.id) {
   treeCanvas <- .TRgui.get(trg.id, "treeCanvas")
   tkid <- as.numeric(tkfind(treeCanvas, "withtag", "current"))
   .TRgui.deselect.this(trg.id, tkid)
-  invisible(NULL)
 }
 
 .TRgui.select.this <- function(trg.id, tkid) {
@@ -1246,7 +1274,6 @@ TRplot <- function(tree,top= NULL){
   }
   txt <- .TRgui.info2str(trg.id,id);
   tkconfigure(trg$infoLabel,text=txt);
-  invisible(NULL)
 }
 
 .TRgui.deselect.this <- function(trg.id, tkid) {
@@ -1255,7 +1282,6 @@ TRplot <- function(tree,top= NULL){
   if ("node" %in% tags) {
     .TRgui.deselect.node(trg.id, tkid)
   }
-  invisible(NULL)
 }
 .TRgui.get.selected.nodes <- function(trg.id) {
   treeCanvas <- .TRgui.get(trg.id, "treeCanvas")
@@ -1284,7 +1310,6 @@ TRgui.close <- function(trg.id, window.close=TRUE) {
   }
   cmd <- paste(sep="", "trg.", trg.id)
 #  rm(list=cmd, envir=.TRgui.env)
-  invisible(NULL)
 }
 
 
@@ -1333,25 +1358,30 @@ TwoSampleGui <- function(){
   minOptTR <- tclVar(dftOpt$minsplit);
   maxOptTR <- tclVar(dftOpt$maxdepth);
   mincritOptTR <- tclVar(dftOpt$mincrit);
+    forestOptTR<-tclVar(0);
+
   varSplitTR <- tclVar(100);
   dataSplitTR <- tclVar(100);
   nfcvOptTR <-tclVar("0");
+  replOptTR <- tclVar("1");
   entry.minOptTR <-tkentry(optTRFrame,width="5",textvariable=minOptTR);
-  entry.maxOptTR <-tkentry(optTRFrame,width="5",textvariable=maxOptTR);
   entry.mincritOptTR <-tkentry(optTRFrame,width="5",textvariable=mincritOptTR);
+  entry.maxOptTR <-tkentry(optTRFrame,width="5",textvariable=maxOptTR);
+  entry.forestOptTR <- tkentry(optTRFrame,width=5,textvariable=forestOptTR);
   entry.varSplitTR <- tkentry(optTRFrame,width="5",textvariable=varSplitTR);
-  entry.dataSplitTR <- tkentry(optTRFrame,width="5",textvariable=dataSplitTR);
-  
+  entry.dataSplitTR <- tkentry(optTRFrame,width="5",textvariable= dataSplitTR);
   entry.nfcvOptTR <- tkentry(optTRFrame,width=5,textvariable=nfcvOptTR);
-  
+  entry.replOptTR <- tkcheckbutton(optTRFrame,variable = replOptTR);
 
-  tkgrid(tklabel(optTRFrame,text="Minimum Split"),entry.minOptTR,
-         tklabel(optTRFrame,text="Min. Criteria"),entry.mincritOptTR);
+    tkgrid(tklabel(optTRFrame,text="Minimum Split"),entry.minOptTR,
+         tklabel(optTRFrame,text="Forest"),entry.forestOptTR);
   tkgrid(tklabel(optTRFrame,text="Maximum Depth"),entry.maxOptTR,
-         tklabel(optTRFrame,text="%Var. split"),entry.varSplitTR);
-  tkgrid(tklabel(optTRFrame,text="%Data split"),entry.dataSplitTR,
-         tklabel(optTRFrame,text="n-fold Cross Validation "),entry.nfcvOptTR);
-  
+         tklabel(optTRFrame,text="%Data. split"),entry.dataSplitTR);
+  tkgrid(tklabel(optTRFrame,text="Min. Criteria"),entry.mincritOptTR,
+         tklabel(optTRFrame,text="Replace"),entry.replOptTR);
+  tkgrid(tklabel(optTRFrame,text="n-fold Cross Validation "),entry.nfcvOptTR,
+	    tklabel(optTRFrame,text="%Var. split"),entry.varSplitTR);
+
   tkgrid(tklabel(TRFrame,text="TreeRank Options"));
   tkgrid(optTRFrame);
   
@@ -1360,13 +1390,14 @@ TwoSampleGui <- function(){
   #LeafRank
   ## Scan the environment for new LeafRank functions definition
   LRlist <- ls(pattern="LR.*.def",name=globalenv());
-  nameLR <- list(LRCart.def$name,LRsvm.def$name);
-  funNameLR <- list(LRCart.def$fun,LRsvm.def$fun);
-  optionLR <- list(LRCart.def$opt,LRsvm.def$opt);
-  opt2cmdLR <- list(LRCart.def$opt2cmd,LRsvm.def$opt2cmd);
+  nameLR <- list(LRCart.def$name,LRsvm.def$name,LRforest.def$name);
+  funNameLR <- list(LRCart.def$fun,LRsvm.def$fun ,LRforest.def$fun);
+  optionLR <- list(LRCart.def$opt,LRsvm.def$opt,LRforest.def$opt);
+  opt2cmdLR <- list(LRCart.def$opt2cmd,LRsvm.def$opt2cmd,LRforest.def$opt2cmd);
   lbLR <- tklistbox(LRFrame,height=3,width=10,selectmode="single");
   tkinsert(lbLR,"end",LRCart.def$name);
   tkinsert(lbLR,"end",LRsvm.def$name);
+  tkinsert(lbLR,"end",LRforest.def$name);
   for (x in LRlist){
     obj <- eval(parse(text=x),globalenv())
     nameLR <- c(nameLR,obj$name);
@@ -1472,17 +1503,23 @@ TwoSampleGui <- function(){
     nfcvOptTRV <- as.integer(tclvalue(nfcvOptTR));
     varSplitTRV <- as.numeric(tclvalue(varSplitTR));
     dataSplitTRV <- as.numeric(tclvalue(dataSplitTR));
-    grTRctrl <- paste("growing_ctrl(maxdepth=",maxOptTRV,",mincrit=",mincritOptTRV,",minsplit=",minOptTRV,")",sep="");
-                                        #    prTRctrl <- paste("pruning_ctrl(prune=",pruneOptTRV,",strat=",stratOptTRV,",nfcv=",nfcvOptTRV,")",sep="");
+    forestTRV <- as.numeric(tclvalue(forestOptTR));
+
+   replTRV <- as.logical(as.numeric(tclvalue(replOptTR)));
 
 
-    listx <- 0;
-    listy <- 0;
-    pcinit <-0;
-    ncinit <-0;
-    TRcmd <-  paste("TreeRank(growing=",grTRctrl,",nfcv=",nfcvOptTRV,",LeafRank= function(...){",funNameLR[[idLR]],"(",optLR,",...)},prcSplitVar=",(varSplitTRV/100),",prcSplitData=",(dataSplitTRV/100),",...)",sep="");
+
+
+        grTRctrl <- paste("growing_ctrl(maxdepth=",maxOptTRV,",mincrit=",mincritOptTRV,",minsplit=",minOptTRV,")",sep="");
+
+
+    if  (forestTRV>1){
+    TRcmd <-  paste("TreeRankForest(ntree=",forestTRV,",replace=",replTRV,",sampsize=",(dataSplitTRV/100),",varsplit=", (varSplitTRV/100),",growing=",grTRctrl,",nfcv=",nfcvOptTRV,",LeafRank= function(...){",funNameLR[[idLR]],"(",optLR,",...)},...)",sep="");
+  }
+    else     TRcmd <-  paste("TreeRank(growing=",grTRctrl,",nfcv=",nfcvOptTRV,",LeafRank= function(...){",funNameLR[[idLR]],"(",optLR,",...)},...)",sep="");
     cmd <- paste("TwoSample(x=",dataset1V,",y=",dataset2V,",split=",splitV,
                  ",alpha=",alphaV,",TRalgo=function(...) ",TRcmd,")",sep="");
+    print(cmd);
   return(cmd);
   
   }
@@ -1491,7 +1528,7 @@ TwoSampleGui <- function(){
     wobj <- eval(parse(text=cmdLine()));
    assign("wobj",wobj,.GlobalEnv);
    id <- TRplot(wobj$tree);
-    .TRgui.addROC(id,getROC(wobj$tree,wobj$test),"Test sample");
+    .TRgui.addROC(id,getCurves(wobj$tree,wobj$test),"Test sample");
                                         #  return(eval(parse(text=cmdLine())));
     print(wobj$wtest);
     

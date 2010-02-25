@@ -29,7 +29,7 @@ All the functionalities are detailled in the \emph{Getting Started} documentatio
 Custom \code{\link{LeafRank}} procedures can be automatically integrated in \code{TRGui} by implementing 
 an optional object in the global environment. To be recognize, the
 object name has to start  with \emph{LR}
-and end by \emph{def} (for example \emph{LRCart.def} is the object corresponding to the \code{\link{LRCart}} LeafRank procedure). 
+and end by \emph{def} (for example \emph{LRCart.def} is the object corresponding to the \code{\link{TR_LRCart}} LeafRank procedure). 
 
 This object has to be a list with the following items:
 \itemize{

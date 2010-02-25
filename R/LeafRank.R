@@ -1,20 +1,34 @@
 #################################################################################
 #
-# LeafRankCart functions : implementation of a LeafRank classifier,
-#                          a modified Cart classifier.
+# LeafRank functions : implementation of LeafRank classifiers:
+#                         LRCart : a modified Cart classifier.
+# 			    LRsvm : a svm classifier
+#                          LRforest : cart-forest classifier
+#################################################################################
+
+#################################################################################
+#  Guideline for a LeafRank implementation 
+#   2 functions are needed :
+#   LRMyClassifier(formula, data,bestresponse, wpos=0.5, weights = NULL) : return the model learned from data,  who fit the formula (R format), with the label bestresponse
+#   as the wanted label; wpos denotes the weight of the positive label (bestresponse label) in data; weights is unused. Usually, the return type is "LRMyClassifier". 
+#   predict.LRMyClassifier(object, newdata, ...) : predict the response of object, the model learned, on the data frame newdata. The return value is <0 for the best instances and >0 for the worstest.
+#   Optionnaly, the function varImportance.LRMyClassifier(obj,norm=TRUE) can be implemented, which return a vector of the variables appearing in the induced model obj and their importance value (norm denotes when a normalisation has to be done or  not).
+#
 #
 #################################################################################
 
 
-
-
+#################################################################################
+# LRCart functions
+#
+#################################################################################
 
 
 #################################################################################
 #
 # predict.TR_LRCart(object, newdata, type) :
 #                           object : LRCart object
-#                           newdata :
+#                           newdata : data to be predicted
 #                           type : "node" to predict terminal nodes
 #                                  otherwise -1 for best label, +1 for worst
 #
@@ -36,6 +50,7 @@ predict.TR_LRCart <- function(object, newdata,...)
 
 
 #################################################################################
+#
 #
 # LRCartFusion(tree, pcInit,ncInit)
 #    Reorder leafs for concavification purpose and merge leafs in two subsets
@@ -77,18 +92,18 @@ LRCartFusion <- function(tree,pcInit,ncInit){
 }
 
 
-
 #################################################################################
 #
 # LRCart(formula, data, bestresponse, weights, growing, pruning) : Main Cart function
 #
 #        formula, data, weights :
 #        bestresponse: value of the label considered as best
-#       growing, pruning :
+#       wpos: positive examples weight
+#        weights : unused
 #
 #       Return : a LeafRank Cart classifier, type TR_LRCart
 #################################################################################
-LRCart <- function(formula, data,bestresponse, weights = NULL,maxdepth=10,minsplit=50,nfcv=0,prcSplitVar = 1, prcSplitData = 1,mincrit=0){
+LRCart <- function(formula, data,bestresponse, wpos=0.5, weights = NULL,maxdepth=10,minsplit=50,mincrit=0,nfcv=0){
   
   evaluation <- function(y, wt, parms){
     idx <- y== bestresponse;
@@ -107,13 +122,12 @@ LRCart <- function(formula, data,bestresponse, weights = NULL,maxdepth=10,minspl
     n <- length(y)
     
     pInit<-parms$pInit;
-    if (!continuous){
-      stop("Only continuous variables are handled");
-    }
     pvec <- y==bestresponse;
     nvec <- !pvec;
     pcount <- sum(pvec*wt)
     ncount <- sum(nvec*wt)
+
+    if (continuous){
     leftpos <- cumsum(pvec*wt)[-n];
     leftneg <- cumsum(nvec*wt)[-n];
     WERMLess <- 2-(2*pInit*leftneg/(pcount+ncount)+2*(1-pInit)*(pcount-leftpos)/(pcount+ncount));
@@ -122,6 +136,17 @@ LRCart <- function(formula, data,bestresponse, weights = NULL,maxdepth=10,minspl
     if (max(WERMLess)<max(WERMGreat)){
       ret <-list(goodness=WERMGreat,direction=rep(-1,(n-1)))
     }
+    }
+    else{
+	ux <- sort(unique(x));
+	wtsumP <- tapply(wt*pvec,x,sum);
+	wtsumN <- tapply(wt*nvec,x,sum);
+	werm <- 2- (2*pInit*wtsumN/(pcount+ncount) + 2*(1-pInit)*(pcount-wtsumP)/(pcount+ncount));
+	ord <- order(werm);
+	no <- length(ord);
+        ret <- list(goodness = werm[ord][-no],direction = ux[ord]);
+
+	}	
     return(ret);
   }
 
@@ -152,31 +177,16 @@ LRCart <- function(formula, data,bestresponse, weights = NULL,maxdepth=10,minspl
   mf <- eval(mf, parent.frame())
   y <-model.response(mf)
                                         #  if (is.null(weights)) weights <- rep.int(1, length(y))
-  rn <- names(mf)[1] ### model.response(mf)
-  x <- mf[,colnames(mf)!="(weights)"]
-  inputs <- which(!(colnames(x) %in% rn));
-  
-  idxVar <- colnames(x);
-  idxData <- 1:nrow(data);
-  if (prcSplitVar<1){
-    idxVar <- c(which(colnames(x)%in%rn),sample(inputs,ceiling(length(inputs)*prcSplitVar)));
-  }
-   if (prcSplitData<1){
-     idxData <- sample(nrow(data),ceiling(nrow(data)*prcSplitData));
-  }
-  pcInit <- y[idxData] == bestresponse;
+  pcInit <- y == bestresponse;
   ncInit <- sum(!pcInit);
   pcInit <- sum(pcInit);
   pInit <- pcInit/(pcInit+ncInit);
-  
-  if ((pInit == 1) || (pInit == 0))
+    if ((pInit == 1) || (pInit == 0))
     {
       return(NULL);
    }
   alist <- list(eval=evaluation,split=split,init=init);
-  tmpCRdata <- mf[idxData,idxVar];
-  rtree <- rpart(formula,tmpCRdata,method=alist,control=rpart.control(cp=0,maxdepth=maxdepth,minsplit=minsplit,maxsurrogate=0,maxcompete=0,minbucket=1),model=TRUE,y=TRUE,xval=0);
-
+  rtree <- rpart(formula,mf,method=alist,control=rpart.control(cp=0,maxdepth=maxdepth,minsplit=minsplit,maxsurrogate=0,maxcompete=0,minbucket=1),model=TRUE,y=TRUE,xval=0);
   tree <- rpart2TR(rtree,bestresponse);
   class(tree) <- "TR_LRCart";
   tree$terms <- rtree$terms;
@@ -246,10 +256,19 @@ object <- x;
     sp <-"root";
     if (id != object$root){
        parent <- object$parentslist[id];
-       if (object$kidslist[[parent]][[1]] == id)
-          sp <- paste(object$split[[parent]]["name"],"<",format(object$split[[parent]]["breaks"],digits=3))
-        else sp <- paste(object$split[[parent]]["name"],">=",format(object$split[[parent]]["breaks"],digits=3));
-     }
+	if (object$split[[parent]]["type"]==0){
+    	   if (object$kidslist[[parent]][[1]] == id)
+    	      sp <- paste(object$split[[parent]]["name"],"<",format(object$split[[parent]]["breaks"],digits=3))
+    	    else sp <- paste(object$split[[parent]]["name"],">=",format(object$split[[parent]]["breaks"],digits=3));
+     	}
+	else 
+	{
+	if (object$kidslist[[parent]][[1]] == id)
+	sp <- paste(object$split[[parent]]["name"],"!=", object$split[[parent]]["breaks"])
+	else sp <- paste(object$split[[parent]]["name"],"==", object$split[[parent]]["breaks"])
+   	 }
+	}
+
     s <- paste(cat(rep(' ',2*object$depth[id])),id,"| ", sp,"  ",
                object$pcount[id],":",
                object$ncount[id]," ",format(object$ldauc[id],digits=3),sep="")
@@ -277,12 +296,19 @@ varImportance.TR_LRCart <- function(obj,norm=TRUE){
 
 
 
-LRsvm <- function(formula,data,bestresponse,weights=NULL,prcSplitVar=1,prcSplitData=1,...){
+#################################################################################
+#
+# LRsvm (formula, data, bestresponse,wpos, weights = NULL,...) 
+#
+#       Return : a LeafRank svm classifier, type TR_LRsvm
+#################################################################################
+
+
+LRsvm <- function(formula,data,bestresponse,wpos=0.5, weights=NULL,...){
   if (missing(data))
     data <- environment(formula)
   mf <- match.call(expand.dots = FALSE)
-  m <- match(c("formula", "data"),
-             names(mf), 0)
+  m <- match(c("formula", "data"),names(mf), 0)
   mf <- mf[c(1, m)]
   mf$drop.unused.levels <- FALSE
   mf[[1]] <- as.name("model.frame")
@@ -292,22 +318,13 @@ LRsvm <- function(formula,data,bestresponse,weights=NULL,prcSplitVar=1,prcSplitD
   rn <- names(mf)[1] ### model.response(mf)
 
   x <- mf[,colnames(mf)!="(weights)"]
-  inputs <- which(!(colnames(x) %in% rn));
-  idxVar <- colnames(x);
-  idxData <- 1:nrow(data);
-  if (prcSplitVar<1){
-    idxVar <- c(which(colnames(x)%in%rn),sample(inputs,ceiling(length(inputs)*prcSplitVar)));
-  }
-   if (prcSplitData<1){
-     idxData <- sample(nrow(data),ceiling(nrow(data)*prcSplitData));
-  }
 
-  pc <- sum(weights[idxData][y[idxData] == bestresponse]);
-  nc <- sum(weights[idxData][y[idxData]!=bestresponse]);
+  pc <- sum(weights[y == bestresponse]);
+  nc <- sum(weights[y!=bestresponse]);
   classw <- c(nc/(pc+nc),pc/(pc+nc));
-  nclass <- unique(data[,rn]);
+  nclass <- unique(mf[,rn]);
 
-  data[,rn] <- as.factor(data[,rn]);
+  mf[,rn] <- as.factor(mf[,rn]);
 
   if (bestresponse !=nclass[[1]])
     {names(classw) <- nclass[c(2,1)];}
@@ -317,18 +334,19 @@ LRsvm <- function(formula,data,bestresponse,weights=NULL,prcSplitVar=1,prcSplitD
   if (classw[[1]]*classw[[2]] == 0)
     return(NULL);
   
-  tmpSRdata <- data[idxData,idxVar];
 #  m <- ksvm(formula,data,type="C-svc",class.weights=classw,prob.model=TRUE);
-  m <- ksvm(formula,tmpSRdata,class.weights=classw,type="C-svc",...);
+  m <- ksvm(formula,mf,class.weights=classw,type="C-svc",...);
   
   ret <- list(svm=m,bestresponse= bestresponse);
-  class(ret)<-"LRsvm";
+  class(ret)<-"TR_LRsvm";
   ret;
 }
 
 
 
-predict.LRsvm <- function(object,newdata=NULL,...){
+
+
+predict.TR_LRsvm <- function(object,newdata=NULL,...){
   p <- predict(object$svm,newdata);
   ret <- rep(1,nrow(newdata));
   ret[p==object$bestresponse] <- -1;
@@ -336,6 +354,66 @@ predict.LRsvm <- function(object,newdata=NULL,...){
 }
   
 
+
+
+
+#################################################################################
+#
+# LRforest(formula,data,bestresponse,wpos,mtry=(ncol(data)-1),...)
+# see randomForest package for forest options
+#
+#################################################################################
+
+
+
+LRforest <- function(formula,data,bestresponse,wpos=0.5,mtry=(ncol(data)-1),prcsize=1,...){
+  if (missing(data))
+    data <- environment(formula)
+  mf <- match.call(expand.dots = FALSE)
+  m <- match(c("formula", "data"), names(mf), 0)
+  mf <- mf[c(1, m)]
+  mf$drop.unused.levels <- FALSE
+  mf[[1]] <- as.name("model.frame")
+  mf <- eval(mf, parent.frame())
+  y <-model.response(mf)
+  rn <- names(mf)[1] ### model.response(mf)
+  x <- mf[,colnames(mf)!="(weights)"]
+  pc <- sum(y == bestresponse);
+  nc <- sum(y!=bestresponse);
+  classw <- c(nc/(pc+nc),pc/(pc+nc));
+  nclass <- unique(mf[,rn]);
+  mf[,rn] <- as.factor(mf[,rn]);
+  if (bestresponse !=nclass[[1]])
+    {names(classw) <- nclass[c(2,1)];}
+  else
+    {names(classw) <- nclass;}
+  
+  if (classw[[1]]*classw[[2]] == 0)
+    return(NULL);
+
+ forest <- randomForest(formula=formula,data=mf,classwt=classw,mtry=mtry,sampsize=floor(prcsize*nrow(data)),...);
+  
+  ret <- list(forest=forest,bestresponse= bestresponse);
+  class(ret)<-"TR_LRforest";
+  ret;
+}
+
+predict.TR_LRforest <- function(object,newdata=NULL,...){
+  p <- predict(object$forest,newdata);
+  ret <- rep(1,nrow(newdata));
+  ret[p==object$bestresponse] <- -1;
+  ret;
+}
+  
+
+varImportance.TR_LRforest <- function(obj,norm=TRUE){
+	vi <- importance(obj$forest);
+	res <- array(vi);
+	names(res) <- row.names(vi);
+  if (norm) ret <- res/max(res)
+  else ret <- res;
+  ret
+}
 
 r2weka <- function(data,dest,lab){
   dest<-file(dest,open="w");
