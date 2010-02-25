@@ -1,0 +1,19 @@
+export(growing_ctrl, auc, getClassifier,getROC,getROC.TR_forest,getROC.TR_TreeRank)
+export(print.TR_TreeRank,print.TR_LRCart)
+export(LRCart, LRsvm)
+export(predict.TR_TreeRank, TreeRank,predict.TR_forest)
+export(subTreeRank, varImportance, varImportance.TR_LRCart)
+export(varImportance.TR_TreeRank,TreeRankForest,varImportance.TR_forest)
+export(TwoSample,TwoSampleGui)
+export(TRplot,TRGui,plotROC)
+S3method(predict,TR_TreeRank)
+S3method(predict,TR_LRCart)
+S3method(predict,LRsvm)
+S3method(predict,TR_forest)
+S3method(print,TR_LRCart);
+S3method(print,TR_TreeRank);
+S3method(getROC,TR_TreeRank);
+S3method(getROC,TR_forest);
+S3method(varImportance,TR_TreeRank);
+S3method(varImportance, TR_forest);
+S3method(varImportance,TR_LRCart);
